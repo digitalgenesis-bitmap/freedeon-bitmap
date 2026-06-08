@@ -1,0 +1,14 @@
+.DS_Store
+
+# Local screenshots
+screenshots/
+
+# Local backups
+server-phase*.py
+state-phase*.json
+server-working.py
+app-working.js
+app.js.bak
+
+# Local runtime state
+state.json
