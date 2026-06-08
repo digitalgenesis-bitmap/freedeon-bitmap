@@ -21,6 +21,126 @@ DEFAULT_ANCHOR = {
 def now_utc():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+# ── Phase 8 — Signal Layer helpers ──────────────────────────────────────────
+
+def resolve_expirations(data):
+    """
+    Lazily resolve expired signals.
+    Scans signals[], flips status to "expired" where expires_at has passed.
+    Returns True if any signal was updated (caller must save state).
+    """
+    now = datetime.now(timezone.utc)
+    mutated = False
+
+    for signal in data.get("signals", []):
+        if not isinstance(signal, dict):
+            continue
+        if signal.get("status") != "active":
+            continue
+        expires_at = signal.get("expires_at")
+        if expires_at is None:
+            continue
+        try:
+            expiry_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            continue
+        if now >= expiry_dt:
+            signal["status"] = "expired"
+            mutated = True
+
+    return mutated
+
+
+def find_signal_by_id(data, signal_id):
+    """
+    Returns the signal dict with the given id, or None if not found.
+    """
+    for signal in data.get("signals", []):
+        if isinstance(signal, dict) and signal.get("id") == signal_id:
+            return signal
+    return None
+
+
+def find_activity_for_signal(data, signal_id):
+    """
+    Returns the activity entry that logged the emission of the given signal_id.
+    Matches on action == "signal_emit" and ref_id == signal_id.
+    Returns None if not found (integrity warning condition).
+    """
+    for entry in data.get("activity", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("action") == "signal_emit" and entry.get("ref_id") == signal_id:
+            return entry
+    return None
+
+
+def validate_anchor_for_signal(data, anchor_id):
+    """
+    Validates that an anchor exists and is not revoked.
+    Returns (anchor_dict, None) on success.
+    Returns (None, error_message) on failure.
+    """
+    for anchor in data.get("anchors", []):
+        if not isinstance(anchor, dict):
+            continue
+        if anchor.get("id") == anchor_id:
+            if anchor.get("status") == "revoked":
+                return None, f"Anchor #{anchor_id} is revoked and cannot be used as Signal origin."
+            return anchor, None
+    return None, f"Anchor #{anchor_id} not found."
+
+
+def format_signal_line(signal):
+    """
+    Returns a single formatted summary line for signal list display.
+    Format: [id] type | status | "content preview..." | created_at
+    """
+    sid     = signal.get("id", "?")
+    stype   = signal.get("type", "unknown").ljust(11)
+    status  = signal.get("status", "unknown").ljust(7)
+    content = signal.get("content", "")
+    preview = (content[:57] + "...") if len(content) > 60 else content
+    created = signal.get("created_at", "")
+
+    return f"[{sid:>3}] {stype} | {status} | \"{preview}\" | {created}"
+
+def extract_signal_content(remainder):
+    """
+    Parses the raw remainder string after 'signal emit'.
+    Expects: <type> "<content>" [--anchor <id>] [--expires <iso>]
+
+    Returns: (sig_type, content, leftover_tokens)
+      - sig_type        : string or None if missing
+      - content         : string or None if quotes missing/malformed
+      - leftover_tokens : list of strings for flag parsing (may be empty)
+    """
+    remainder = remainder.strip()
+    if not remainder:
+        return None, None, []
+
+    # split type from the rest
+    type_end = remainder.find(" ")
+    if type_end == -1:
+        return remainder.lower(), None, []
+
+    sig_type   = remainder[:type_end].lower()
+    after_type = remainder[type_end:].strip()
+
+    # locate quoted content
+    q_start = after_type.find('"')
+    if q_start == -1:
+        return sig_type, None, []
+
+    q_end = after_type.find('"', q_start + 1)
+    if q_end == -1:
+        return sig_type, None, []
+
+    content  = after_type[q_start + 1 : q_end]
+    leftover = after_type[q_end + 1:].strip()
+    tokens   = leftover.split() if leftover else []
+
+    return sig_type, content, tokens
 
 def load_state():
     if os.path.exists(STATE_FILE):
@@ -37,11 +157,12 @@ def load_state():
     data.setdefault("knowledge", {})
     data.setdefault("activity",  [])
     data.setdefault("anchors",   [])
+    data.setdefault("signals",   [])      # Phase 8 — Signal Layer
 
     # ── bootstrap next_id ───────────────────────────────────────────────────
     if "next_id" not in data:
         highest = 0
-        for col in ("memory", "activity", "anchors"):
+        for col in ("memory", "activity", "anchors", "signals"):
             for entry in data[col]:
                 if isinstance(entry, dict):
                     highest = max(highest, entry.get("id", 0))
@@ -158,6 +279,133 @@ def anchor_label_exists(label):
         for a in state.get("anchors", [])
     )
 
+def cmd_signal_emit(argument):
+    """
+    signal emit <type> "<content>" [--anchor <id>] [--expires <iso>]
+
+    Emits a Signal from the active EON identity.
+    Supported types: pulse, declaration.
+    Appends to state["signals"] and records to activity ledger.
+    """
+    # ── parse ─────────────────────────────────────────────────────────────
+    sig_type, content, flag_tokens = extract_signal_content(argument)
+
+    if not sig_type:
+        return 'Usage: signal emit <type> "<content>" [--anchor <id>] [--expires <iso>]'
+
+    if sig_type not in ("pulse", "declaration"):
+        return f"Unknown signal type: '{sig_type}'. Valid types: pulse, declaration."
+
+    if content is None:
+        return 'Signal content must be enclosed in quotes. Example: signal emit pulse "I am alive."'
+
+    if not content.strip():
+        return "Signal content cannot be empty."
+
+    content = content.strip()
+
+    # ── parse optional flags ──────────────────────────────────────────────
+    anchor_id  = None
+    expires_at = None
+    i = 0
+    while i < len(flag_tokens):
+        token = flag_tokens[i].lower()
+        if token == "--anchor":
+            if i + 1 >= len(flag_tokens):
+                return "--anchor requires an anchor ID."
+            try:
+                anchor_id = int(flag_tokens[i + 1])
+            except ValueError:
+                return f"Invalid anchor ID: '{flag_tokens[i + 1]}'. Must be an integer."
+            i += 2
+        elif token == "--expires":
+            if i + 1 >= len(flag_tokens):
+                return "--expires requires a timestamp."
+            expires_at = flag_tokens[i + 1].strip()
+            i += 2
+        else:
+            i += 1
+
+    # ── identity pre-condition ────────────────────────────────────────────
+    identity = state.get("identity", {})
+    if not identity or not identity.get("name"):
+        return "No active identity. Cannot emit Signal."
+
+    # ── validate anchor if provided ───────────────────────────────────────
+    origin_ref = None
+    if anchor_id is not None:
+        anchor, anchor_err = validate_anchor_for_signal(state, anchor_id)
+        if anchor_err:
+            return anchor_err
+        origin_ref = {"type": "anchor", "id": anchor_id}
+
+    # ── validate expiration if provided ───────────────────────────────────
+    if expires_at is not None:
+        try:
+            expiry_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if expiry_dt <= datetime.now(timezone.utc):
+                return "Expiration must be a future timestamp."
+        except ValueError:
+            return (
+                f"Invalid expiration timestamp: '{expires_at}'. "
+                "Use ISO format, e.g. 2026-12-31T00:00:00Z."
+            )
+
+    # ── soft warning for unanchored declaration ───────────────────────────
+    warning = ""
+    if sig_type == "declaration" and origin_ref is None:
+        warning = (
+            "\nNote: declaration emitted without territorial anchor. "
+            "Consider using --anchor for declarations about specific territory."
+        )
+
+    # ── allocate id and construct signal ──────────────────────────────────
+    sig_id  = alloc_id()
+    created = now_utc()
+
+    signal = {
+        "id":         sig_id,
+        "type":       sig_type,
+        "content":    content,
+        "origin_ref": origin_ref,
+        "status":     "active",
+        "expires_at": expires_at,
+        "created_at": created,
+    }
+
+    # ── append to signals collection ──────────────────────────────────────
+    state["signals"].append(signal)
+
+    # ── record to activity ledger ─────────────────────────────────────────
+    record_activity(
+        action     = "signal_emit",
+        input_text = content[:60],
+        ref_id     = sig_id,
+        details    = {
+            "type":       sig_type,
+            "origin_ref": origin_ref,
+            "expires_at": expires_at,
+        }
+    )
+
+    # ── persist ───────────────────────────────────────────────────────────
+    save_state(state)
+
+    # ── confirmation output ───────────────────────────────────────────────
+    origin_display  = f"anchor #{anchor_id}" if origin_ref else "none"
+    expires_display = expires_at if expires_at else "never"
+
+    return (
+        f"Signal emitted.\n"
+        f"  ID      : {sig_id}\n"
+        f"  Type    : {sig_type}\n"
+        f"  Content : \"{content}\"\n"
+        f"  Origin  : {origin_display}\n"
+        f"  Status  : active\n"
+        f"  Created : {created}\n"
+        f"  Expires : {expires_display}"
+        + warning
+    )
 
 def handle_command(raw_command):
     parts = raw_command.strip().split(None, 1)
@@ -533,18 +781,14 @@ def handle_command(raw_command):
         return f"Identity field set — {key}: \"{value}\". The mesh knows you now."
 
     if command == "signal":
-        record_activity(
-            action     = "signal",
-            input_text = argument if argument else None,
-            ref_id     = None,
-            details    = {"text": argument} if argument else None
-        )
-        save_state(state)
-        return (
-            "Signal received. "
-            "Propagating through the intermesh. "
-            "Your node is heard."
-        )
+        sub_parts = argument.split(None, 1)
+        sub       = sub_parts[0].lower() if sub_parts else ""
+        remainder = sub_parts[1] if len(sub_parts) > 1 else ""
+
+        if sub == "emit":
+            return cmd_signal_emit(remainder)
+
+        return f"Unknown signal subcommand: '{sub}'. Available: emit, list, view."
 
     if command:
         return (
