@@ -12,3 +12,4 @@ app.js.bak
 
 # Local runtime state
 state.json
+__pycache__/
