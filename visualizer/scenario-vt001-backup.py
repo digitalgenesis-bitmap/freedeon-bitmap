@@ -43,30 +43,19 @@ EON "Misled"  -- Error Epistemologico (separate from Test Visual 001)
     sloppy, the world just didn't match the belief.
 """
 
-states = [
-    State("A"),
-    State("B"),
-    State("C"),
-    State("D"),
-    State("E"),
-    State("F"),
-    State("G"),
-]
+states = [State("A"), State("B"), State("C"), State("D")]
 
 transitions = [
     Transition("A", "B", required_capability="jump"),
     Transition("B", "C"),
-    Transition("A", "E", required_capability="jump"),
-    Transition("E", "F"),
-    Transition("B", "G"),
 ]
 
-info_af = Information(
-    id="info_af",
-    content="claims_path:A:F"
-)
+# Information content encodes which specific pair it claims a path for.
+info_ac = Information(id="info_ac", content="claims_path:A:C")
+info_ad_false = Information(id="info_ad_false", content="claims_path:A:D")  # false claim
 
-information_set = {info_af}
+information_set = {info_ac, info_ad_false}
+
 
 def _claims_pair(info, a, b):
     return info.content == f"claims_path:{a}:{b}"
@@ -83,21 +72,24 @@ def rule_never_infers(known, a, b):
 
 
 eons = {
-    "ALPHA": EON(
-        capabilities={"jump"},
-        known_information=set(),
+    "Wanderer": EON(
+        capabilities=set(),
+        known_information={info_ac},
         inference_rules=[rule_destination_aware],
     ),
-
-    "BETA": EON(
-        capabilities={"jump"},
-        known_information={info_af},
-        inference_rules=[rule_destination_aware],
-    ),
-
-    "GAMMA": EON(
+    "Capable": EON(
         capabilities={"jump"},
         known_information=set(),
+        inference_rules=[rule_never_infers],
+    ),
+    "Blind": EON(
+        capabilities={"jump"},
+        known_information=set(),
+        inference_rules=[],
+    ),
+    "Misled": EON(
+        capabilities=set(),
+        known_information={info_ad_false},
         inference_rules=[rule_destination_aware],
     ),
 }
