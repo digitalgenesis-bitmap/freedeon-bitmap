@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!--
+  State Space Visualizer v0.1
+
+  Single source of truth: this page fetches engine.py and scenario.py
+  from disk at runtime and runs them, unmodified, inside Pyodide.
+  Neither file's contents are duplicated anywhere in this HTML, in
+  style.css, or in app.js.
+
+  DEPLOYMENT NOTE: fetch() of a local file is blocked by browser CORS
+  policy when opened as file://. Serve this directory over http(s),
+  e.g.:
+      python3 -m http.server 8000
+  then open http://localhost:8000/
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>State Space Visualizer v0.1 — Freedeon Engine</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar__mark">
+      <span class="topbar__glyph">◎</span>
+      <span class="topbar__title">State Space Visualizer</span>
+      <span class="topbar__version">v0.1</span>
+    </div>
+    <div class="topbar__status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-text">loading engine…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- LEFT: controls -->
+    <section class="panel panel--controls" aria-label="Selection controls">
+      <div class="panel__label">Select</div>
+
+      <div class="field">
+        <label for="select-eon">EON</label>
+        <select id="select-eon"></select>
+      </div>
+
+      <div class="field">
+        <label for="select-origin">Origin state</label>
+        <select id="select-origin"></select>
+      </div>
+
+      <div class="field">
+        <label for="select-destination">Destination state</label>
+        <select id="select-destination"></select>
+      </div>
+
+      <div class="panel__divider"></div>
+
+      <div class="panel__label">Result <span class="panel__label-sub">— from engine, not derived here</span></div>
+      <dl class="result-list" id="result-list">
+        <div class="result-row">
+          <dt>exists_path</dt>
+          <dd id="r-exists_path">—</dd>
+        </div>
+        <div class="result-row">
+          <dt>can_reach</dt>
+          <dd id="r-can_reach">—</dd>
+        </div>
+        <div class="result-row">
+          <dt>can_discover</dt>
+          <dd id="r-can_discover">—</dd>
+        </div>
+      </dl>
+
+      <div class="panel__divider"></div>
+
+      <div class="panel__label">Category</div>
+      <div class="result-row">
+        <dt>destination is</dt>
+        <dd id="r-category">—</dd>
+      </div>
+    </section>
+
+    <!-- CENTER: graph -->
+    <section class="panel panel--graph" aria-label="State space graph">
+      <svg id="graph-svg" viewBox="0 0 760 480" preserveAspectRatio="xMidYMid meet"></svg>
+    </section>
+
+    <!-- RIGHT: legend -->
+    <section class="panel panel--legend" aria-label="Legend">
+      <div class="panel__label">Legend</div>
+
+      <div class="legend-group">
+        <div class="legend-group__title">Categories</div>
+        <div class="legend-item">
+          <span class="legend-swatch legend-swatch--reachable"></span>
+          <span>Reachable</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch legend-swatch--discoverable"></span>
+          <span>Discoverable only</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch legend-swatch--connected"></span>
+          <span>Connected only</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch legend-swatch--abyss"></span>
+          <span>Abyss</span>
+        </div>
+      </div>
+
+      <div class="legend-group">
+        <div class="legend-group__title">Path lines</div>
+        <div class="legend-item">
+          <svg class="legend-line" viewBox="0 0 60 12"><line x1="2" y1="6" x2="58" y2="6" class="line-existing" /></svg>
+          <span>Existing</span>
+        </div>
+        <div class="legend-item">
+          <svg class="legend-line" viewBox="0 0 60 12"><line x1="2" y1="6" x2="58" y2="6" class="line-selected" /></svg>
+          <span>Selected</span>
+        </div>
+        <div class="legend-item">
+          <svg class="legend-line" viewBox="0 0 60 12"><line x1="2" y1="6" x2="58" y2="6" class="line-traversed" /><circle cx="50" cy="6" r="3" class="line-traversed-marker" /></svg>
+          <span>Traversed</span>
+        </div>
+      </div>
+
+      <div class="panel__divider"></div>
+      <p class="panel__note">
+        Colors represent category only. Not value, priority, or preference.
+        The visualizer renders engine output — it does not compute ontology.
+      </p>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <span>The UI represents. The Engine decides.</span>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

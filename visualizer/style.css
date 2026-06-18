@@ -1,0 +1,387 @@
+/* ===========================================================
+   State Space Visualizer v0.1
+   Design intent: a topology instrument, not a marketing surface.
+   Only the graph moves. Everything else holds still.
+   =========================================================== */
+
+:root {
+  --ink:        #e8e6df;
+  --ink-dim:    #9a978c;
+  --ink-faint:  #5f5d54;
+  --bg:         #14140f;
+  --bg-panel:   #1b1b14;
+  --bg-raised:  #232318;
+  --line:       #34331f;
+
+  --c-reachable:    #5fb878;
+  --c-discoverable: #5b8fd4;
+  --c-connected:    #8c8a7c;
+  --c-abyss:        #c4554a;
+
+  --c-existing:  #5f5d54;
+  --c-selected:  #5b8fd4;
+  --c-traversed: #5fb878;
+
+  --mono: "JetBrains Mono", "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ---------- topbar ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+
+.topbar__mark {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.topbar__glyph {
+  font-size: 18px;
+  color: var(--c-discoverable);
+}
+
+.topbar__title {
+  font-family: var(--mono);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.topbar__version {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.topbar__status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  transition: background 200ms ease;
+}
+
+.status-dot.is-ready {
+  background: var(--c-reachable);
+  box-shadow: 0 0 6px var(--c-reachable);
+}
+
+.status-dot.is-error {
+  background: var(--c-abyss);
+  box-shadow: 0 0 6px var(--c-abyss);
+}
+
+/* ---------- layout ---------- */
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 240px 1fr 240px;
+  gap: 1px;
+  background: var(--line);
+}
+
+.panel {
+  background: var(--bg-panel);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.panel--graph {
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+}
+
+.panel__label {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin-bottom: 14px;
+}
+
+.panel__label-sub {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--ink-faint);
+  font-size: 10px;
+}
+
+.panel__divider {
+  height: 1px;
+  background: var(--line);
+  margin: 18px 0;
+}
+
+.panel__note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-faint);
+  margin: 0;
+}
+
+/* ---------- controls ---------- */
+
+.field {
+  margin-bottom: 14px;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-dim);
+  margin-bottom: 6px;
+}
+
+select {
+  width: 100%;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 3px;
+  appearance: none;
+}
+
+select:focus-visible {
+  outline: 2px solid var(--c-discoverable);
+  outline-offset: 1px;
+}
+
+/* ---------- results ---------- */
+
+.result-list {
+  margin: 0;
+}
+
+.result-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 0;
+}
+
+.result-row dt {
+  color: var(--ink-dim);
+}
+
+.result-row dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.result-row dd.is-true  { color: var(--c-reachable); }
+.result-row dd.is-false { color: var(--c-abyss); }
+
+#r-category {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+/* ---------- legend ---------- */
+
+.legend-group {
+  margin-bottom: 18px;
+}
+
+.legend-group__title {
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin-bottom: 8px;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.legend-swatch--reachable    { background: var(--c-reachable); }
+.legend-swatch--discoverable { background: var(--c-discoverable); }
+.legend-swatch--connected    { background: var(--c-connected); }
+.legend-swatch--abyss        {
+  background: var(--c-abyss);
+  opacity: 0.4;
+  border: 1px dashed var(--c-abyss);
+}
+
+.legend-line {
+  width: 32px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.line-existing {
+  stroke: var(--c-existing);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+
+.line-selected {
+  stroke: var(--c-selected);
+  stroke-width: 3;
+}
+
+.line-traversed {
+  stroke: var(--c-traversed);
+  stroke-width: 2;
+}
+
+.line-traversed-marker {
+  fill: var(--c-traversed);
+}
+
+/* ---------- graph (svg) ---------- */
+
+#graph-svg {
+  width: 100%;
+  height: 100%;
+  max-height: 70vh;
+}
+
+.gnode {
+  cursor: default;
+}
+
+.gnode__circle {
+  stroke-width: 1.5;
+  transition: fill 200ms ease, stroke 200ms ease, opacity 200ms ease;
+}
+
+.gnode__circle.cat-reachable    { fill: var(--c-reachable);    stroke: var(--c-reachable); }
+.gnode__circle.cat-discoverable { fill: var(--c-discoverable); stroke: var(--c-discoverable); }
+.gnode__circle.cat-connected    { fill: var(--c-connected);    stroke: var(--c-connected); }
+.gnode__circle.cat-abyss        {
+  fill: var(--c-abyss);
+  stroke: var(--c-abyss);
+  stroke-dasharray: 4 3;
+  opacity: 0.2;
+}
+
+.gnode__circle.cat-neutral {
+  fill: var(--bg-raised);
+  stroke: var(--ink-faint);
+}
+
+.gnode__circle.is-origin {
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.gnode__circle.is-destination {
+  stroke-width: 2.5;
+}
+
+.gnode__label {
+  font-family: var(--mono);
+  font-size: 13px;
+  fill: var(--ink);
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.gedge {
+  stroke: var(--c-existing);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+  fill: none;
+  transition: stroke 200ms ease, stroke-width 200ms ease;
+}
+
+.gedge.is-selected {
+  stroke: var(--c-selected);
+  stroke-width: 3;
+  stroke-dasharray: none;
+}
+
+.gedge.is-traversed {
+  stroke: var(--c-traversed);
+  stroke-width: 2.5;
+  stroke-dasharray: none;
+}
+
+.gedge-cap {
+  fill: var(--c-existing);
+}
+
+/* tooltip via native <title> handles abyss hint; no JS tooltip needed */
+
+/* ---------- footer ---------- */
+
+.footer {
+  text-align: center;
+  padding: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+  border-top: 1px solid var(--line);
+  background: var(--bg-panel);
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 880px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .panel--graph {
+    order: -1;
+    min-height: 320px;
+  }
+}
