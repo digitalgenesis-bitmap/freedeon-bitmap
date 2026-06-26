@@ -385,3 +385,11 @@ select:focus-visible {
     min-height: 320px;
   }
 }
+
+.helper-text {
+  margin-top: 6px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  opacity: 0.65;
+  line-height: 1.4;
+}
