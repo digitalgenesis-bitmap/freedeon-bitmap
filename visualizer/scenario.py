@@ -84,20 +84,20 @@ def rule_never_infers(known, a, b):
 
 eons = {
     "ALPHA": EON(
-        capabilities={"jump"},
+        capabilities=set(),
         known_information=set(),
-        inference_rules=[rule_destination_aware],
+        inference_rules=[rule_never_infers],
     ),
 
     "BETA": EON(
         capabilities={"jump"},
-        known_information={info_af},
-        inference_rules=[rule_destination_aware],
+        known_information=set(),
+        inference_rules=[rule_never_infers],
     ),
 
     "GAMMA": EON(
-        capabilities={"jump"},
-        known_information=set(),
+        capabilities=set(),
+        known_information={info_af},
         inference_rules=[rule_destination_aware],
     ),
 }
